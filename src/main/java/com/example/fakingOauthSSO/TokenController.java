@@ -54,8 +54,15 @@ public class TokenController {
     }
 
     public String getUsername() {
-      return this.userDetails.get("user_name");
+      return this.userDetails.get("username");
     }
+    public String getEmail() {
+      return this.userDetails.get("email");
+    }
+    public String getName() {
+      return this.userDetails.get("name");
+    }
+
   }
 
 

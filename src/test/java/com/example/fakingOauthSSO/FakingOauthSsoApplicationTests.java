@@ -2,39 +2,27 @@ package com.example.fakingOauthSSO;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
-import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
-import java.io.Serializable;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
-import org.springframework.security.authentication.TestingAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.AuthorityUtils;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.oauth2.client.DefaultOAuth2ClientContext;
 import org.springframework.security.oauth2.client.OAuth2ClientContext;
 import org.springframework.security.oauth2.client.OAuth2RestTemplate;
 import org.springframework.security.oauth2.client.token.DefaultAccessTokenRequest;
 import org.springframework.security.oauth2.common.DefaultOAuth2AccessToken;
-import org.springframework.security.oauth2.provider.OAuth2Authentication;
-import org.springframework.security.oauth2.provider.OAuth2Request;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.context.WebApplicationContext;
 
 @RunWith(SpringRunner.class)
@@ -44,80 +32,52 @@ public class FakingOauthSsoApplicationTests {
   @Autowired
   WebApplicationContext wac;
 
-  @Test
-  public void testGetAuthenticationInfo() throws Exception {
-    MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(wac)
-        .apply(springSecurity())
-        .build();
+  MockMvc mvc;
 
-    mockMvc.perform(MockMvcRequestBuilders.get("/api/token")
-        .with(authentication(getOauthTestAuthentication()))
-        .sessionAttrs(getOauth2SessionAttributes()))
+  @MockBean
+  OAuth2RestTemplate template;
+
+  @Before
+  public void setup() {
+    mvc = webAppContextSetup(wac).build();
+    when(template.getOAuth2ClientContext()).thenReturn(new DefaultOAuth2ClientContext(new DefaultAccessTokenRequest()));
+    when(template.getAccessToken()).thenReturn(new DefaultOAuth2AccessToken("my-fake-token"));
+  }
+
+
+  @Test
+  @WithOAuth2Authentication
+  public void testGetAuthenticationInfo() throws Exception {
+
+    mvc.perform(get("/api/token")
+        .sessionAttr("scopedTarget.oauth2ClientContext", getOauth2ClientContext()))
         .andExpect(status().isOk())
         .andExpect(content().contentType(MediaType.APPLICATION_JSON_UTF8))
+        .andExpect(jsonPath("$.token").value("my-fake-token"))
         .andExpect(jsonPath("$.username").value("test"))
-        .andExpect(jsonPath("$.token").value("my-fake-token"));
+        .andExpect(jsonPath("$.name").value("test user"))
+        .andExpect(jsonPath("$.email").value("test@test.org"));
   }
 
-  private Authentication getOauthTestAuthentication() {
-    return new OAuth2Authentication(getOauth2Request(), getAuthentication());
+  @Test
+  @WithOAuth2Authentication(username = "john", name = "john", email = "john@email.com")
+  public void testGetAuthenticationInfo2() throws Exception {
+
+    mvc.perform(get("/api/token")
+        .sessionAttr("scopedTarget.oauth2ClientContext", getOauth2ClientContext()))
+        .andExpect(status().isOk())
+        .andExpect(content().contentType(MediaType.APPLICATION_JSON_UTF8))
+        .andExpect(jsonPath("$.token").value("my-fake-token"))
+        .andExpect(jsonPath("$.username").value("john"))
+        .andExpect(jsonPath("$.name").value("john"))
+        .andExpect(jsonPath("$.email").value("john@email.com"));
   }
 
-  private OAuth2Request getOauth2Request() {
-    System.out.println("in FakingOauthSsoApplicationTests.getOauth2Request");
-    String clientId = "oauth-client-id";
-    Map<String, String> requestParameters = Collections.emptyMap();
-    boolean approved = true;
-    String redirectUrl = "https://www.facebook.com/dialog/oauth";
-    Set<String> responseTypes = Collections.emptySet();
-    Set<String> scopes = Collections.emptySet();
-    Set<String> resourceIds = Collections.emptySet();
-    Map<String, Serializable> extensionProperties = Collections.emptyMap();
-    List<GrantedAuthority> authorities = AuthorityUtils.createAuthorityList("Everything");
-
-    OAuth2Request oAuth2Request = new OAuth2Request(requestParameters, clientId, authorities,
-        approved, scopes, resourceIds, redirectUrl, responseTypes, extensionProperties);
-
-    return oAuth2Request;
-  }
-
-  private Authentication getAuthentication() {
-    List<GrantedAuthority> authorities = AuthorityUtils.createAuthorityList("Everything");
-
-    User userPrincipal = new User("user", "", true, true, true, true, authorities);
-
-    HashMap<String, String> details = new HashMap<String, String>();
-    details.put("user_name", "test");
-    details.put("email", "test@test.org");
-    details.put("name", "test user");
-
-    TestingAuthenticationToken token = new TestingAuthenticationToken(userPrincipal, null, authorities);
-    token.setAuthenticated(true);
-    token.setDetails(details);
-
-    return token;
-  }
 
   private OAuth2ClientContext getOauth2ClientContext() {
     OAuth2ClientContext mockClient = mock(OAuth2ClientContext.class);
     when(mockClient.getAccessToken()).thenReturn(new DefaultOAuth2AccessToken("my-fake-token"));
     return mockClient;
-  }
-
-  private OAuth2RestTemplate getOauth2RestTemplate() {
-    OAuth2RestTemplate mockTemplate = mock(OAuth2RestTemplate.class);
-    when(mockTemplate.getOAuth2ClientContext()).thenReturn(new DefaultOAuth2ClientContext(new
-        DefaultAccessTokenRequest()));
-    when(mockTemplate.getAccessToken()).thenReturn(new DefaultOAuth2AccessToken("my-fake-token"));
-
-    return mockTemplate;
-  }
-
-  private Map<String, Object> getOauth2SessionAttributes() {
-    HashMap<String, Object> attrs = new HashMap<>();
-    attrs.put("scopedTarget.oauth2ClientContext",getOauth2ClientContext());
-    attrs.put("scopedTarget.oauth2RestTemplate",getOauth2RestTemplate());
-    return attrs;
   }
 
 }

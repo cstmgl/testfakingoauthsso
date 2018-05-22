@@ -26,6 +26,7 @@ import org.springframework.security.oauth2.config.annotation.web.configuration.E
 @EnableOAuth2Client
 @Configuration
 public class MyConfig {
+
   @Value("${oauth.resource:https://graph.facebook.com/me}")
   private String baseUrl;
   @Value("${oauth.authorize:https://www.facebook.com/dialog/oauth}")
